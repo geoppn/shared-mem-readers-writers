@@ -68,6 +68,11 @@ int main(int argc, char *argv[]) {
     sem_close(writer_sem);
     sem_close(mutex_sem);
 
+    // HANDLE SLEEPING
+    int sec = rand() % (dr + 1);
+    sleep(sec);
+
+
     struct timespec end_time;
     clock_gettime(CLOCK_MONOTONIC, &end_time);
     double total_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9; // CALCULATE TIME AND CONVERT TO SECONDS
