@@ -7,7 +7,8 @@
 
 #include "SharedMemory.h"
 
-#define MAX_VALUE 150
+#define MAX_VALUE 150 // MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
+#define MAX_NUM_RECORDS 5 // MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
 
 int main(int argc, char *argv[]) {
     // DECLARE ARGV VARIABLES
@@ -50,7 +51,7 @@ int main(int argc, char *argv[]) {
             max_records++;
         }
     }
-
+    fclose(file);
 
     // CONVERT THE VALID DW AND DR INTO STRINGS SO THEY CAN BE PARSED TO THE CHILD PROCESSES LATER
     char dw_str[12];
@@ -67,8 +68,10 @@ int main(int argc, char *argv[]) {
     char shmid_str[12];
     sprintf(shmid_str, "%d", shmid);
 
-    // INITIALIZE A SEMAPHORE
-    sem_t* mutex = create_semaphore();
+    // INITIALIZE SEMAPHORES
+    sem_t *mutex = create_semaphore("/mutex");
+    sem_t *reader = create_semaphore("/reader");
+    sem_t *writer = create_semaphore("/writer");
 
     srand(time(NULL)); // INITIALIZE RAND
     
@@ -79,41 +82,53 @@ int main(int argc, char *argv[]) {
 
         if (choice == 'r') { // SPAWN A READER
             if (fork() == 0) {
-                execlp("./reader", "./reader", "-f", filename, "-d", dr_str, NULL);
+                int flip = rand() % 2; // COIN FLIP TO SEE IF THE READER WILL READ ONE RECORD OR MULTIPLE
+                int initial_recid = rand() % max_records; // INITIAL RECORD ID
+                if (flip == 0) { // SINGLE RECORD ID
+                    char recid_str[10];
+                    sprintf(recid_str, "%d", initial_recid);
+                    execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
+                } else { // MULTIPLE RECORD IDs
+                    int num_records = rand() % MAX_NUM_RECORDS + 1; // MAX_NUM_RECORDS = MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
+                    char recid_str[20];
+                    sprintf(recid_str, "%d,%d", initial_recid, initial_recid + num_records - 1);
+                    execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
+                }
             }
         } else if (choice == 'w') { // SPAWN A WRITER
             if (fork() == 0) {
                 // GENERATE RANDOM VALUES 
                 char recid[7];
-                sprintf(recid, "%d", rand() % max_records); // Replace MAX_RECORDS with the actual number of records in the file
+                sprintf(recid, "%d", rand() % max_records); 
                 char value[7];
-                sprintf(value, "%d", rand() % (MAX_VALUE * 2) - MAX_VALUE); // Replace MAX_VALUE with the maximum absolute value you want
+                sprintf(value, "%d", rand() % (MAX_VALUE * 2) - MAX_VALUE);  // MAX VALUE = MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
 
-                execlp("./writer", "./writer", filename,  recid, value, dw_str, shmid_str, NULL);
+                execlp("./writer", "./writer", filename, recid, value, dw_str, shmid_str, NULL);
             }
         } else if (choice == 'q') {
             break;
         }
 
-        // Consume the newline character left over by getchar()
+        // IGNORE THE NEWLINE CHARACTER
         getchar();
     }
     // CALCULATE ALL NECESSARY INFORMATION BEFORE PROGRAM EXIT
     SharedData* sharedData = (SharedData*) shmat(shmid, NULL, 0); // ACCESS THE SHARED MEMORY DATA
+    // CALCUATE THE AVERAGE WRITER TIME
     double writer_total = 0;
     for (int i = 0; i < sharedData->completed_writers; i++) {
         writer_total += sharedData->writer_times[i];
     }
     double avg_writer_time = writer_total / sharedData->completed_writers;
 
-    // Calculate the average reader time
+    // CALCUATE THE AVERAGE READER TIME
     double reader_total = 0;
     for (int i = 0; i < sharedData->completed_readers; i++) {
         reader_total += sharedData->reader_times[i];
     }
     double avg_reader_time = reader_total / sharedData->completed_readers;
 
-    // Print the information
+    // PRINT ALL THE INFORMATION
     printf("Number of completed readers: %d\n", sharedData->completed_readers);
     printf("Average reader activity time: %.2f seconds\n", avg_reader_time);
     printf("Number of completed writers: %d\n", sharedData->completed_writers);
@@ -121,9 +136,12 @@ int main(int argc, char *argv[]) {
     printf("Maximum delay before starting work: %.2f seconds\n", sharedData->maxdelay);
     printf("Total number of processed records: %d\n", sharedData->processed_records);
 
-    // Clean up: destroy the semaphore and shared memory segment
-    destroy_semaphore(mutex);
+    // CLEAN UP
+    destroy_semaphore(mutex, "/mutex");
+    destroy_semaphore(reader, "/reader");
+    destroy_semaphore(writer, "/writer");
+
     destroy_shared_memory(shmid);
-    fclose(file);
+    
     return 0;
 }
