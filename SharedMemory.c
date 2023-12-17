@@ -1,3 +1,7 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <stddef.h>
+#include <fcntl.h>
 #include "SharedMemory.h"
 
 int create_shared_memory(key_t key) {

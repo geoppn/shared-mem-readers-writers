@@ -17,7 +17,7 @@ typedef struct SharedData{
     int processed_records; // COUNTER FOR PROCESSED RECORDS
 } SharedData;
 
-int create_shared_memory(key_t key);
-void destroy_shared_memory(int shmid);
-sem_t* create_semaphore();
-void destroy_semaphore(sem_t* sem);
+int create_shared_memory(key_t);
+void destroy_shared_memory(int);
+sem_t* create_semaphore(const char*);
+void destroy_semaphore(sem_t* sem,const char*);

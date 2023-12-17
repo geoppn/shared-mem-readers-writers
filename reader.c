@@ -3,6 +3,8 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include <time.h>
 
 #include "SharedMemory.h" 
@@ -48,7 +50,7 @@ int main(int argc, char *argv[]) {
             Record record;
             fread(&record, sizeof(Record), 1, file);
             // INCREMENT RECORDS HANDLED IN SHARED MEMORY
-            printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %f\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
+            printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %d\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
             total_bal+=record.balance;
         }
         double avg_bal = total_bal/consecutive_recs+1;
