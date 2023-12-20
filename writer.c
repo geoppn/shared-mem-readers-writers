@@ -8,15 +8,20 @@
 #include <time.h>
 
 #include "SharedMemory.h" 
+extern int max_records;
 
 int main(int argc, char *argv[]) {
     struct timespec start_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     // OPEN THE SEMAPHORES WITHIN THIS PROGRAM
-    sem_t *reader_sem = sem_open("/reader", 0);
-    sem_t *writer_sem = sem_open("/writer", 0);
-    sem_t *mutex_sem = sem_open("/muter", 0);
+    sem_t *block_sems[NUM_BLOCKS];
+    char sem_name[20];
+
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        sprintf(sem_name, "/block_sem_%d", i);
+        block_sems[i] = sem_open(sem_name, 0);
+    }
 
     // GET ARGV VARIABLES AND CONVERT THEM TO THE CORRECT DATA TYPES (IF NEEDED)
     char *filename = argv[1];
@@ -28,8 +33,8 @@ int main(int argc, char *argv[]) {
     // ATTACH THE SHARED MEMORY TO THIS PROGRAM
     SharedData *data = (SharedData*) shmat(shmid, NULL, 0);  
 
-    // OPEN THE FILE
-    FILE *file = fopen(filename, "r");
+    // OPEN THE FILE (WITH WRITING PERMS TOO)
+    FILE *file = fopen(filename, "r+");
     
     // SEEK TO THE APPROPRIATE RECORD
     fseek(file, recid * sizeof(Record), SEEK_SET);
@@ -53,9 +58,10 @@ int main(int argc, char *argv[]) {
     // CLOSE THE FILE
     fclose(file);
     // CLOSE THE SEMAPHORES
-    sem_close(reader_sem);
-    sem_close(writer_sem);
-    sem_close(mutex_sem);
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        sprintf(sem_name, "/block_sem_%d", i);
+        sem_close(sem_name);
+    }
 
     // HANDLE SLEEPING
     int sec = rand() % (dw + 1);

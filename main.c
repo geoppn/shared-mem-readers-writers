@@ -11,6 +11,7 @@
 
 #define MAX_VALUE 150 // MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
 #define MAX_NUM_RECORDS 5 // MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
+int max_records;
 
 int main(int argc, char *argv[]) {
     // DECLARE ARGV VARIABLES
@@ -21,10 +22,13 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-f") == 0 && i + 1 < argc) {
             filename = argv[i + 1];
+            i++;
         } else if (strcmp(argv[i], "-dw") == 0 && i + 1 < argc) {
             dw = atoi(argv[i + 1]);
+            i++;
         } else if (strcmp(argv[i], "-dr") == 0 && i + 1 < argc) {
             dr = atoi(argv[i + 1]);
+            i++;
         } else {
             fprintf(stderr, "Invalid command line argument: %s\n", argv[i]);
             fprintf(stderr, "Correct usage flags: ./main -f filename -dw writer_delay -dr reader_delay \n");
@@ -45,14 +49,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     // COUNT THE AMOUNT OF RECORDS FOR FURTHER USE
-    int max_records = 0;
-    char ch;
-    while (!feof(file)) {
-        ch = fgetc(file);
-        if (ch == '\n') {
-            max_records++;
-        }
-    }
+    fseek(file, 0, SEEK_END); // TRAVERSE TO THE END OF THE FILE
+    long filesize = ftell(file); // GET THE TOTAL FILE SIZE
+    max_records = filesize / sizeof(Record); // CALCULATE THE AMOUNT OF RECORDS
     fclose(file);
 
     // CONVERT THE VALID DW AND DR INTO STRINGS SO THEY CAN BE PARSED TO THE CHILD PROCESSES LATER
@@ -71,19 +70,28 @@ int main(int argc, char *argv[]) {
     sprintf(shmid_str, "%d", shmid);
 
     // INITIALIZE SEMAPHORES
-    sem_t *mutex = create_semaphore("/mutex");
-    sem_t *reader = create_semaphore("/reader");
-    sem_t *writer = create_semaphore("/writer");
+    sem_t *block_sems[NUM_BLOCKS]; // WE NEED AN ARRAY OF SEMAPHORES FOR EACH PARTITION OF THE FILE
+    char sem_name[20];
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        sprintf(sem_name, "/block_sem_%d", i); // APPEND THE LOOP COUNTER TO A STATIONARY NAME, TO CREATE INDIVIDUAL SEMAPHORE NAMES
+        block_sems[i] = create_semaphore(sem_name);
+    }
 
-    srand(time(NULL)); // INITIALIZE RAND
-    
+    sem_t *stats_sem = create_semaphore("/stats_sem"); // CREATE A SEMAPHORE FOR SHARED MEMORY ACCESS
+
+    int records_per_block = max_records / NUM_BLOCKS; // CALCULATE THE AMOUNT OF RECORDS EACH SEMAPHORE SEGMENT WILL MANAGE BASED ON FILE PROVIDED
+
+
+
+    // PROGRAM MAIN LOOP AND SPAWNING SEGMENT
     while (1) {
         // PRINT BASIC INFO
-        printf("CONTROLS: 'r' to spawn a reader, 'w' to spawn a writer or 'q' to quit: ");
+        printf("CONTROLS: 'r' to spawn a reader, 'w' to spawn a writer or 'q' to quit: \n");
         char choice = getchar();
 
         if (choice == 'r') { // SPAWN A READER
             if (fork() == 0) {
+                srand(time(NULL)); // INITIALIZE RAND
                 int flip = rand() % 2; // COIN FLIP TO SEE IF THE READER WILL READ ONE RECORD OR MULTIPLE
                 int initial_recid = rand() % max_records; // INITIAL RECORD ID
                 if (flip == 0) { // SINGLE RECORD ID
@@ -93,12 +101,13 @@ int main(int argc, char *argv[]) {
                 } else { // MULTIPLE RECORD IDs
                     int num_records = rand() % MAX_NUM_RECORDS + 1; // MAX_NUM_RECORDS = MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
                     char recid_str[20];
-                    sprintf(recid_str, "%d,%d", initial_recid, initial_recid + num_records - 1);
+                    sprintf(recid_str, "%d,%d", initial_recid, num_records);
                     execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
                 }
             }
         } else if (choice == 'w') { // SPAWN A WRITER
             if (fork() == 0) {
+                srand(time(NULL)); // INITIALIZE RAND
                 // GENERATE RANDOM VALUES 
                 char recid[7];
                 sprintf(recid, "%d", rand() % max_records); 
@@ -139,9 +148,12 @@ int main(int argc, char *argv[]) {
     printf("Total number of processed records: %d\n", sharedData->processed_records);
 
     // CLEAN UP
-    destroy_semaphore(mutex, "/mutex");
-    destroy_semaphore(reader, "/reader");
-    destroy_semaphore(writer, "/writer");
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        sprintf(sem_name, "/block_sem_%d", i);
+        destroy_semaphore(block_sems[i], sem_name);
+    }
+
+    destroy_semaphore(stats_sem, "/stats_sem");
 
     destroy_shared_memory(shmid);
     

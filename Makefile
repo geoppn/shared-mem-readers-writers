@@ -7,7 +7,7 @@ reader: reader.c SharedMemory.c
 	$(CC) $(CFLAGS) -o reader reader.c SharedMemory.c
 
 writer: writer.c SharedMemory.c
-	&(CC) $(CFLAGS) -o writer writer.c SharedMemory.c
+	$(CC) $(CFLAGS) -o writer writer.c SharedMemory.c
 
 main: main.c SharedMemory.c
 	$(CC) $(CFLAGS) -o main main.c SharedMemory.c

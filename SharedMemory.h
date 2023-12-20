@@ -5,8 +5,7 @@
 #include <semaphore.h>
 #include "RECORD.h"
 
-#define MAX_READERS 50
-#define MAX_WRITERS 50
+#define NUM_BLOCKS 50 // CHANGING TO A HIGHER VARIABLE IS NOT RECOMMENDED
 
 typedef struct SharedData{
     double writer_times[MAX_WRITERS]; // ARRAY OF THE ELAPSED TIMES OF THE WRITERS
