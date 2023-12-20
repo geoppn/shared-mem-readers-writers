@@ -8,7 +8,6 @@
 #include <time.h>
 
 #include "SharedMemory.h" 
-extern int max_records;
 
 int main(int argc, char *argv[]) {
     struct timespec start_time;
@@ -39,15 +38,24 @@ int main(int argc, char *argv[]) {
 
     // ATTACH THE SHARED MEMORY TO THIS PROGRAM
     SharedData *data = (SharedData*) shmat(shmid, NULL, 0);  
-
+    
     // OPEN THE FILE
     FILE *file = fopen(filename, "r");
+    fseek(file, 0, SEEK_END); 
+    long filesize = ftell(file); 
+    int max_records = filesize / sizeof(Record); 
+    int block_indices[NUM_BLOCKS]; 
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        block_indices[i] = -1; // Initialize all elements to -1
+    }
 
     // CONSECUTIVE RECORDS EXIST:
     if (consecutive_recs != -1) {
         int total_bal=0;
         for (int i = 0; i < consecutive_recs; i++) { // ITERATE THROUGH THE CONSECUTIVE RECORDS INCLUDING THE FIRST ONE
             int block_index = (recid + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
+            block_indices[i] = block_index;
+            printf("Reader process is waiting for RECORD with id %d\n",recid + i);
             sem_wait(block_sems[block_index]);
 
             // SEEK TO THE RECORD
@@ -57,8 +65,6 @@ int main(int argc, char *argv[]) {
             Record record;
             fread(&record, sizeof(Record), 1, file);
 
-            sem_post(block_sems[block_index]);
-
             // INCREMENT RECORDS HANDLED IN SHARED MEMORY
             printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %d\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
             total_bal+=record.balance;
@@ -67,6 +73,7 @@ int main(int argc, char *argv[]) {
         printf("Average balance of the records read by reader with PID %d: %f\n", getpid(), avg_bal);
     } else { // IF THERE ARE NO CONSECUTIVE RECORDS
         int block_index = recid / (max_records/NUM_BLOCKS); 
+        block_indices[1] = block_index;
         sem_wait(block_sems[block_index]);
 
         fseek(file, recid * sizeof(Record), SEEK_SET);
@@ -74,25 +81,27 @@ int main(int argc, char *argv[]) {
         Record record;
         fread(&record, sizeof(Record), 1, file);
 
-        sem_post(block_sems[block_index]);
-
         printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %d\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
         // INCREMENT RECORDS HANDLED IN SHARED MEMORY
-    }
-
-    // CLOSE THE FILE
-    fclose(file);
-    // CLOSE THE SEMAPHORES
-    for (int i = 0; i < NUM_BLOCKS; i++) {
-        sprintf(sem_name, "/block_sem_%d", i);
-        sem_close(sem_name);
     }
 
     // HANDLE SLEEPING
     int sec = rand() % (dr + 1);
     sleep(sec);
 
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        if (block_indices[i] != -1) { // Check if the index is not -1
+            sem_post(block_sems[block_indices[i]]);
+            printf("Reader posted for RECORD with in BLOCK %d\n",block_indices[i]);
+        }
+    }
 
+    // CLOSE THE FILE
+    fclose(file);
+    // CLOSE THE SEMAPHORES
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        sem_close(block_sems[i]);
+    }
     struct timespec end_time;
     clock_gettime(CLOCK_MONOTONIC, &end_time);
     double total_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9; // CALCULATE TIME AND CONVERT TO SECONDS

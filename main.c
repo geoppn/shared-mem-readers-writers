@@ -6,12 +6,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/wait.h>
 
 #include "SharedMemory.h"
 
 #define MAX_VALUE 150 // MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
 #define MAX_NUM_RECORDS 5 // MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
-int max_records;
 
 int main(int argc, char *argv[]) {
     // DECLARE ARGV VARIABLES
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     // COUNT THE AMOUNT OF RECORDS FOR FURTHER USE
     fseek(file, 0, SEEK_END); // TRAVERSE TO THE END OF THE FILE
     long filesize = ftell(file); // GET THE TOTAL FILE SIZE
-    max_records = filesize / sizeof(Record); // CALCULATE THE AMOUNT OF RECORDS
+    int max_records = filesize / sizeof(Record); // CALCULATE THE AMOUNT OF RECORDS
     fclose(file);
 
     // CONVERT THE VALID DW AND DR INTO STRINGS SO THEY CAN BE PARSED TO THE CHILD PROCESSES LATER
@@ -78,50 +78,49 @@ int main(int argc, char *argv[]) {
     }
 
     sem_t *stats_sem = create_semaphore("/stats_sem"); // CREATE A SEMAPHORE FOR SHARED MEMORY ACCESS
-
-    int records_per_block = max_records / NUM_BLOCKS; // CALCULATE THE AMOUNT OF RECORDS EACH SEMAPHORE SEGMENT WILL MANAGE BASED ON FILE PROVIDED
-
-
-
+    int quit=0;
     // PROGRAM MAIN LOOP AND SPAWNING SEGMENT
-    while (1) {
+    while(!quit) {
         // PRINT BASIC INFO
         printf("CONTROLS: 'r' to spawn a reader, 'w' to spawn a writer or 'q' to quit: \n");
-        char choice = getchar();
-
-        if (choice == 'r') { // SPAWN A READER
-            if (fork() == 0) {
-                srand(time(NULL)); // INITIALIZE RAND
-                int flip = rand() % 2; // COIN FLIP TO SEE IF THE READER WILL READ ONE RECORD OR MULTIPLE
-                int initial_recid = rand() % max_records; // INITIAL RECORD ID
-                if (flip == 0) { // SINGLE RECORD ID
-                    char recid_str[10];
-                    sprintf(recid_str, "%d", initial_recid);
-                    execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
-                } else { // MULTIPLE RECORD IDs
-                    int num_records = rand() % MAX_NUM_RECORDS + 1; // MAX_NUM_RECORDS = MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
-                    char recid_str[20];
-                    sprintf(recid_str, "%d,%d", initial_recid, num_records);
-                    execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
+        char choice[3];
+        if (fgets(choice, 3, stdin) != NULL) {
+            switch (choice[0]) {
+                case 'r':
+                    if (fork() == 0) {
+                    srand(time(NULL)); // INITIALIZE RAND
+                    int flip = rand() % 2; // COIN FLIP TO SEE IF THE READER WILL READ ONE RECORD OR MULTIPLE
+                    int initial_recid = rand() % max_records; // INITIAL RECORD ID
+                    if (flip == 0) { // SINGLE RECORD ID
+                        char recid_str[10];
+                        sprintf(recid_str, "%d", initial_recid);
+                        execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
+                    } else { // MULTIPLE RECORD IDs
+                        int num_records = rand() % MAX_NUM_RECORDS + 1; // MAX_NUM_RECORDS = MAXIMUM NUMBER OF CONSECUTIVE RECORDS THAN CAN BE READ
+                        char recid_str[20];
+                        sprintf(recid_str, "%d,%d", initial_recid, num_records);
+                        execlp("./reader", "./reader", filename, recid_str, dr_str, shmid_str, NULL);
+                    }
                 }
-            }
-        } else if (choice == 'w') { // SPAWN A WRITER
-            if (fork() == 0) {
-                srand(time(NULL)); // INITIALIZE RAND
-                // GENERATE RANDOM VALUES 
-                char recid[7];
-                sprintf(recid, "%d", rand() % max_records); 
-                char value[7];
-                sprintf(value, "%d", rand() % (MAX_VALUE * 2) - MAX_VALUE);  // MAX VALUE = MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
+                break;
+                case 'w':
+                    if (fork() == 0) {
+                        printf("entered w\n");
+                        srand(time(NULL)); // INITIALIZE RAND
+                        // GENERATE RANDOM VALUES 
+                        char recid[7];
+                        sprintf(recid, "%d", rand() % max_records); 
+                        char value[7];
+                        sprintf(value, "%d", rand() % (MAX_VALUE * 2) - MAX_VALUE);  // MAX VALUE = MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
 
-                execlp("./writer", "./writer", filename, recid, value, dw_str, shmid_str, NULL);
+                        execlp("./writer", "./writer", filename, recid, value, dw_str, shmid_str, NULL);
+                    }
+                    break;
+                case 'q':
+                    quit=1;
+                    break;
             }
-        } else if (choice == 'q') {
-            break;
         }
-
-        // IGNORE THE NEWLINE CHARACTER
-        getchar();
     }
     // CALCULATE ALL NECESSARY INFORMATION BEFORE PROGRAM EXIT
     SharedData* sharedData = (SharedData*) shmat(shmid, NULL, 0); // ACCESS THE SHARED MEMORY DATA
