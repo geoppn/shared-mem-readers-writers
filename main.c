@@ -76,10 +76,20 @@ int main(int argc, char *argv[]) {
         sprintf(sem_name, "/block_sem_%d", i); // APPEND THE LOOP COUNTER TO A STATIONARY NAME, TO CREATE INDIVIDUAL SEMAPHORE NAMES
         block_sems[i] = create_semaphore(sem_name);
     }
+    sem_t *stats_sem = create_semaphore("/mutex"); // CREATE A SEMAPHORE FOR SHARED MEMORY ACCESS
 
-    sem_t *stats_sem = create_semaphore("/stats_sem"); // CREATE A SEMAPHORE FOR SHARED MEMORY ACCESS
-    int quit=0;
+    SharedData* sharedData = (SharedData*) shmat(shmid, NULL, 0); // ACCESS THE SHARED MEMORY DATA
+    for (int i = 0; i < NUM_BLOCKS; i++) {
+        sharedData->reader_times[i] = -1.0;
+        sharedData->writer_times[i] = -1.0;
+    }
+    sharedData->maxdelay = 0.0;
+    sharedData->completed_readers = 0;
+    sharedData->completed_writers = 0;
+    sharedData->processed_records = 0;
+
     // PROGRAM MAIN LOOP AND SPAWNING SEGMENT
+    int quit=0;
     while(!quit) {
         // PRINT BASIC INFO
         printf("CONTROLS: 'r' to spawn a reader, 'w' to spawn a writer or 'q' to quit: \n");
@@ -123,7 +133,6 @@ int main(int argc, char *argv[]) {
         }
     }
     // CALCULATE ALL NECESSARY INFORMATION BEFORE PROGRAM EXIT
-    SharedData* sharedData = (SharedData*) shmat(shmid, NULL, 0); // ACCESS THE SHARED MEMORY DATA
     // CALCUATE THE AVERAGE WRITER TIME
     double writer_total = 0;
     for (int i = 0; i < sharedData->completed_writers; i++) {

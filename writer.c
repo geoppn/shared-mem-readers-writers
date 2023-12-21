@@ -11,16 +11,20 @@
 
 int main(int argc, char *argv[]) {
     struct timespec start_time;
+    struct timespec delay_start;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
+    clock_gettime(CLOCK_MONOTONIC, &delay_start);
 
     // OPEN THE SEMAPHORES WITHIN THIS PROGRAM
     sem_t *block_sems[NUM_BLOCKS];
+    sem_t *mutex;
     char sem_name[20];
 
     for (int i = 0; i < NUM_BLOCKS; i++) {
         sprintf(sem_name, "/block_sem_%d", i);
         block_sems[i] = sem_open(sem_name, 0);
     }
+    mutex = sem_open("/mutex", 0);
 
     // GET ARGV VARIABLES AND CONVERT THEM TO THE CORRECT DATA TYPES (IF NEEDED)
     char *filename = argv[1];
@@ -39,9 +43,11 @@ int main(int argc, char *argv[]) {
     long filesize = ftell(file); 
     int max_records = filesize / sizeof(Record); 
     int block_index = recid / (max_records/NUM_BLOCKS);
-    
-    sem_wait(block_sems[block_index]);
 
+    struct timespec delay_end; // DELAY END TIME
+
+    sem_wait(block_sems[block_index]);
+    clock_gettime(CLOCK_MONOTONIC, &delay_end);
     // SEEK TO THE APPROPRIATE RECORD
     fseek(file, recid * sizeof(Record), SEEK_SET);
 
@@ -72,14 +78,33 @@ int main(int argc, char *argv[]) {
 
     // CLOSE THE FILE
     fclose(file);
+
+    struct timespec end_time;
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double total_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9; // CALCULATE TIME AND CONVERT TO SECONDS
+    double delay = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+    
+    // WRITE ALL INFO TO SHARED MEMORY
+    sem_wait(mutex); // LOCK THE SHARED MEMORY
+
+    for (int i = 0; i < NUM_BLOCKS; i++) { 
+        if (data->writer_times[i] == -1.0) { 
+            data->writer_times[i] = total_time;
+            break;
+        }
+    }
+    data->completed_writers++; 
+    data->processed_records++; 
+    if (delay > data->maxdelay) { 
+        data->maxdelay = delay;
+    }
+    sem_post(mutex); // UNLOCK THE SHARED MEMORY  
+
     // CLOSE THE SEMAPHORES
     for (int i = 0; i < NUM_BLOCKS; i++) {
         sem_close(block_sems[i]);
     }
-    struct timespec end_time;
-    clock_gettime(CLOCK_MONOTONIC, &end_time);
-    double total_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9; // CALCULATE TIME AND CONVERT TO SECONDS
-    // WRITE THE ELAPSED TIME TO THE SHARED MEMORY AND INCREMENT THE COMPLETED READERS
+    sem_close(mutex);
 
     // DETACH THE SHARED MEMORY FROM THIS PROGRAM
     shmdt(data);

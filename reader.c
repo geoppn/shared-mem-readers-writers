@@ -10,17 +10,22 @@
 #include "SharedMemory.h" 
 
 int main(int argc, char *argv[]) {
+    int procrecords=0;
+    struct timespec delay_start;
     struct timespec start_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
+    clock_gettime(CLOCK_MONOTONIC, &delay_start);
 
     // OPEN THE SEMAPHORES WITHIN THIS PROGRAM
     sem_t *block_sems[NUM_BLOCKS];
+    sem_t *mutex;
     char sem_name[20];
 
     for (int i = 0; i < NUM_BLOCKS; i++) {
         sprintf(sem_name, "/block_sem_%d", i);
         block_sems[i] = sem_open(sem_name, 0);
     }
+    mutex = sem_open("/mutex", 0);
 
     // GET ARGV VARIABLES AND CONVERT THEM TO THE CORRECT DATA TYPES (IF NEEDED)
     char *filename = argv[1];
@@ -38,6 +43,7 @@ int main(int argc, char *argv[]) {
 
     // ATTACH THE SHARED MEMORY TO THIS PROGRAM
     SharedData *data = (SharedData*) shmat(shmid, NULL, 0);  
+
     
     // OPEN THE FILE
     FILE *file = fopen(filename, "r");
@@ -49,6 +55,8 @@ int main(int argc, char *argv[]) {
         block_indices[i] = -1; // Initialize all elements to -1
     }
 
+    struct timespec delay_end;
+
     // CONSECUTIVE RECORDS EXIST:
     if (consecutive_recs != -1) {
         int total_bal=0;
@@ -57,9 +65,11 @@ int main(int argc, char *argv[]) {
             block_indices[i] = block_index;
             printf("Reader process is waiting for RECORD with id %d\n",recid + i);
             sem_wait(block_sems[block_index]);
+            clock_gettime(CLOCK_MONOTONIC, &delay_end); // END THE TIMER WHEN THE PROCESS ENTERS ITS CS
 
             // SEEK TO THE RECORD
             fseek(file, (recid + i) * sizeof(Record), SEEK_SET);
+            procrecords++;
             
             // READ THE FIRST RECORD
             Record record;
@@ -75,12 +85,12 @@ int main(int argc, char *argv[]) {
         int block_index = recid / (max_records/NUM_BLOCKS); 
         block_indices[1] = block_index;
         sem_wait(block_sems[block_index]);
-
+        clock_gettime(CLOCK_MONOTONIC, &delay_end); 
         fseek(file, recid * sizeof(Record), SEEK_SET);
-
+        procrecords++;
         Record record;
         fread(&record, sizeof(Record), 1, file);
-
+        
         printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %d\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
         // INCREMENT RECORDS HANDLED IN SHARED MEMORY
     }
@@ -98,14 +108,34 @@ int main(int argc, char *argv[]) {
 
     // CLOSE THE FILE
     fclose(file);
+
+    // CALCULATE THE TOTAL TIME AND DELAY
+    struct timespec end_time;
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double total_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9; // CALCULATE TIME AND CONVERT TO SECONDS
+    double delay = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+
+    // WRITE ALL INFO TO SHARED MEMORY
+    sem_wait(mutex); // LOCK THE SHARED MEMORY
+
+    for (int i = 0; i < NUM_BLOCKS; i++) { // ITERATE THROUGH THE READER TIMES ARRAY
+        if (data->reader_times[i] == -1.0) { // IF THE CURRENT ELEMENT IS -1, THEN IT IS EMPTY
+            data->reader_times[i] = total_time;
+            break;
+        }
+    }
+    data->completed_readers++; // INCREMENT THE COMPLETED READERS
+    data->processed_records += procrecords; // INCREMENT THE PROCESSED RECORDS
+    if (delay > data->maxdelay) { // UPDATE MAXDELAY IF VIABLE
+        data->maxdelay = delay;
+    }
+    sem_post(mutex); // UNLOCK THE SHARED MEMORY    
+
     // CLOSE THE SEMAPHORES
     for (int i = 0; i < NUM_BLOCKS; i++) {
         sem_close(block_sems[i]);
     }
-    struct timespec end_time;
-    clock_gettime(CLOCK_MONOTONIC, &end_time);
-    double total_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9; // CALCULATE TIME AND CONVERT TO SECONDS
-    // WRITE THE ELAPSED TIME TO THE SHARED MEMORY AND INCREMENT THE COMPLETED READERS
+    sem_close(mutex);
 
     // DETACH THE SHARED MEMORY FROM THIS PROGRAM
     shmdt(data);
