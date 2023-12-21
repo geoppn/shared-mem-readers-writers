@@ -61,14 +61,15 @@ int main(int argc, char *argv[]) {
     if (consecutive_recs != -1) {
         int total_bal=0;
         for (int i = 0; i < consecutive_recs; i++) { // ITERATE THROUGH THE CONSECUTIVE RECORDS INCLUDING THE FIRST ONE
-            int block_index = (recid + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
+            int block_index = ((recid-1) + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
             block_indices[i] = block_index;
-            printf("Reader process is waiting for RECORD with id %d\n",recid + i);
+            printf("Reader process is waiting for RECORD with id %d in block %d\n",recid + i, block_index);
             sem_wait(block_sems[block_index]);
+            printf("DONE WAITING\n");
             clock_gettime(CLOCK_MONOTONIC, &delay_end); // END THE TIMER WHEN THE PROCESS ENTERS ITS CS
 
             // SEEK TO THE RECORD
-            fseek(file, (recid + i) * sizeof(Record), SEEK_SET);
+            fseek(file, ((recid - 1) + i) * sizeof(Record), SEEK_SET);
             procrecords++;
             
             // READ THE FIRST RECORD
@@ -82,11 +83,11 @@ int main(int argc, char *argv[]) {
         double avg_bal = total_bal/consecutive_recs+1;
         printf("Average balance of the records read by reader with PID %d: %f\n", getpid(), avg_bal);
     } else { // IF THERE ARE NO CONSECUTIVE RECORDS
-        int block_index = recid / (max_records/NUM_BLOCKS); 
+        int block_index = (recid-1) / (max_records/NUM_BLOCKS); 
         block_indices[1] = block_index;
         sem_wait(block_sems[block_index]);
         clock_gettime(CLOCK_MONOTONIC, &delay_end); 
-        fseek(file, recid * sizeof(Record), SEEK_SET);
+        fseek(file, (recid-1) * sizeof(Record), SEEK_SET);
         procrecords++;
         Record record;
         fread(&record, sizeof(Record), 1, file);
@@ -102,11 +103,12 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < NUM_BLOCKS; i++) {
         if (block_indices[i] != -1) { // Check if the index is not -1
             sem_post(block_sems[block_indices[i]]);
-            printf("Reader posted for RECORD with in BLOCK %d\n",block_indices[i]);
+            printf("Reader posted for RECORD(s) %s\n",argv[2]);
         }
     }
 
-    // CLOSE THE FILE
+    // CLOSE THE FILEq
+
     fclose(file);
 
     // CALCULATE THE TOTAL TIME AND DELAY

@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
                     if (fork() == 0) {
                     srand(time(NULL)); // INITIALIZE RAND
                     int flip = rand() % 2; // COIN FLIP TO SEE IF THE READER WILL READ ONE RECORD OR MULTIPLE
-                    int initial_recid = rand() % max_records; // INITIAL RECORD ID
+                    int initial_recid = rand() % max_records + 1; // INITIAL RECORD ID, +1 to EXCLUDE 0, NO REC.ID IS 0
                     if (flip == 0) { // SINGLE RECORD ID
                         char recid_str[10];
                         sprintf(recid_str, "%d", initial_recid);
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
                         srand(time(NULL)); // INITIALIZE RAND
                         // GENERATE RANDOM VALUES 
                         char recid[7];
-                        sprintf(recid, "%d", rand() % max_records); 
+                        sprintf(recid, "%d", rand() % max_records + 1); 
                         char value[7];
                         sprintf(value, "%d", rand() % (MAX_VALUE * 2) - MAX_VALUE);  // MAX VALUE = MAXIMUM ABSOLUTE VALUE TO ADD/SUBTRACT FROM THE RECORDS BALANCE
 
@@ -133,17 +133,22 @@ int main(int argc, char *argv[]) {
         }
     }
     // CALCULATE ALL NECESSARY INFORMATION BEFORE PROGRAM EXIT
+    
     // CALCUATE THE AVERAGE WRITER TIME
     double writer_total = 0;
     for (int i = 0; i < sharedData->completed_writers; i++) {
-        writer_total += sharedData->writer_times[i];
+        if (sharedData->writer_times[i] != -1) {
+            writer_total += sharedData->writer_times[i];
+        }
     }
     double avg_writer_time = writer_total / sharedData->completed_writers;
 
     // CALCUATE THE AVERAGE READER TIME
     double reader_total = 0;
     for (int i = 0; i < sharedData->completed_readers; i++) {
-        reader_total += sharedData->reader_times[i];
+        if (sharedData->reader_times[i] != -1) {
+            reader_total += sharedData->reader_times[i];
+        }
     }
     double avg_reader_time = reader_total / sharedData->completed_readers;
 
@@ -161,7 +166,7 @@ int main(int argc, char *argv[]) {
         destroy_semaphore(block_sems[i], sem_name);
     }
 
-    destroy_semaphore(stats_sem, "/stats_sem");
+    destroy_semaphore(stats_sem, "/mutex");
 
     destroy_shared_memory(shmid);
     

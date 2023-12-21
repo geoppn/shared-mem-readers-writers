@@ -42,14 +42,14 @@ int main(int argc, char *argv[]) {
     fseek(file, 0, SEEK_END); 
     long filesize = ftell(file); 
     int max_records = filesize / sizeof(Record); 
-    int block_index = recid / (max_records/NUM_BLOCKS);
+    int block_index = (recid-1) / (max_records/NUM_BLOCKS); // -1 SINCE RECID'S START FROM 1
 
     struct timespec delay_end; // DELAY END TIME
 
     sem_wait(block_sems[block_index]);
     clock_gettime(CLOCK_MONOTONIC, &delay_end);
     // SEEK TO THE APPROPRIATE RECORD
-    fseek(file, recid * sizeof(Record), SEEK_SET);
+    fseek(file, (recid-1) * sizeof(Record), SEEK_SET);
 
     // READ THE RECORD
     Record rec;
@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
     rec.balance += value;
 
     // SEEK BACK TO THE SAME RECORD
-    fseek(file, recid * sizeof(Record), SEEK_SET);
+    fseek(file, (recid-1) * sizeof(Record), SEEK_SET);
 
     // WRITE THE RECORD BACK
     fwrite(&rec, sizeof(Record), 1, file);
