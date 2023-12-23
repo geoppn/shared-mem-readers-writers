@@ -5,7 +5,7 @@
 #include <semaphore.h>
 #include "RECORD.h"
 
-#define NUM_BLOCKS 20 // CHANGING TO A HIGHER VARIABLE IS NOT RECOMMENDED
+#define NUM_BLOCKS 50 // CHNGING TO A HIGHER VARIABLE IS NOT RECOMMENDED
 
 typedef struct SharedData{
     double writer_times[NUM_BLOCKS]; // ARRAY OF THE ELAPSED TIMES OF THE WRITERS

@@ -50,19 +50,15 @@ int main(int argc, char *argv[]) {
     fseek(file, 0, SEEK_END); 
     long filesize = ftell(file); 
     int max_records = filesize / sizeof(Record); 
-    int block_indices[NUM_BLOCKS]; 
-    for (int i = 0; i < NUM_BLOCKS; i++) {
-        block_indices[i] = -1; // Initialize all elements to -1
-    }
+    int block_index;
 
     struct timespec delay_end;
-
     // CONSECUTIVE RECORDS EXIST:
     if (consecutive_recs != -1) {
         int total_bal=0;
         for (int i = 0; i < consecutive_recs; i++) { // ITERATE THROUGH THE CONSECUTIVE RECORDS INCLUDING THE FIRST ONE
-            int block_index = ((recid-1) + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
-            block_indices[i] = block_index;
+            int block_index = (recid-1 + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
+            printf("recid: %d, max_records: %d, NUM_BLOCKS: %d, block_index: %d\n", recid + i, max_records, NUM_BLOCKS, block_index);
             printf("Reader process is waiting for RECORD with id %d in block %d\n",recid + i, block_index);
             sem_wait(block_sems[block_index]);
             printf("DONE WAITING\n");
@@ -72,19 +68,19 @@ int main(int argc, char *argv[]) {
             fseek(file, ((recid - 1) + i) * sizeof(Record), SEEK_SET);
             procrecords++;
             
-            // READ THE FIRST RECORD
+            // READ THE RECORD
             Record record;
             fread(&record, sizeof(Record), 1, file);
 
-            // INCREMENT RECORDS HANDLED IN SHARED MEMORY
             printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %d\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
             total_bal+=record.balance;
+            if(i!=consecutive_recs-1)
+                sem_post(block_sems[block_index]);
         }
         double avg_bal = total_bal/consecutive_recs+1;
         printf("Average balance of the records read by reader with PID %d: %f\n", getpid(), avg_bal);
     } else { // IF THERE ARE NO CONSECUTIVE RECORDS
-        int block_index = (recid-1) / (max_records/NUM_BLOCKS); 
-        block_indices[1] = block_index;
+        block_index = (recid-1) / (double)(max_records/NUM_BLOCKS); 
         sem_wait(block_sems[block_index]);
         clock_gettime(CLOCK_MONOTONIC, &delay_end); 
         fseek(file, (recid-1) * sizeof(Record), SEEK_SET);
@@ -100,14 +96,10 @@ int main(int argc, char *argv[]) {
     int sec = rand() % (dr + 1);
     sleep(sec);
 
-    for (int i = 0; i < NUM_BLOCKS; i++) {
-        if (block_indices[i] != -1) { // Check if the index is not -1
-            sem_post(block_sems[block_indices[i]]);
-            printf("Reader posted for RECORD(s) %s\n",argv[2]);
-        }
-    }
+    sem_post(block_sems[block_index]);
+    printf("Reader posted for RECORD(s) %s\n",argv[2]);
 
-    // CLOSE THE FILEq
+    // CLOSE THE FILE
 
     fclose(file);
 

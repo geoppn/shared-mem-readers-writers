@@ -50,3 +50,15 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+main
+reader
+writer
+
+/SampleData4Proj3
+writer
+SampleData4Proj3/accounts5000.bin
+SampleData4Proj3/accounts50.bin
+SampleData4Proj3/accounts5000.bin
+SampleData4Proj3/accounts100000.bin
+reader
+main
