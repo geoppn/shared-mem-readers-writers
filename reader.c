@@ -17,13 +17,16 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &delay_start);
 
     // OPEN THE SEMAPHORES WITHIN THIS PROGRAM
-    sem_t *block_sems[NUM_BLOCKS];
+    sem_t *reader_sems[NUM_BLOCKS];
+    sem_t *writer_sems[NUM_BLOCKS];
     sem_t *mutex;
     char sem_name[20];
 
     for (int i = 0; i < NUM_BLOCKS; i++) {
-        sprintf(sem_name, "/block_sem_%d", i);
-        block_sems[i] = sem_open(sem_name, 0);
+        sprintf(sem_name, "/reader_sem_%d", i);
+        reader_sems[i] = sem_open(sem_name, 0);
+        sprintf(sem_name, "/writer_sem_%d", i);
+        writer_sems[i] = sem_open(sem_name, 0);
     }
     mutex = sem_open("/mutex", 0);
 
@@ -57,11 +60,14 @@ int main(int argc, char *argv[]) {
     if (consecutive_recs != -1) {
         int total_bal=0;
         for (int i = 0; i < consecutive_recs; i++) { // ITERATE THROUGH THE CONSECUTIVE RECORDS INCLUDING THE FIRST ONE
-            int block_index = (recid-1 + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
-            printf("recid: %d, max_records: %d, NUM_BLOCKS: %d, block_index: %d\n", recid + i, max_records, NUM_BLOCKS, block_index);
+            block_index = (recid-1 + i) / (max_records/NUM_BLOCKS); // CALCULATE WHICH BLOCK EACH OF THE RECORDS BELONGS TO
+            printf("\033[1;33m");
             printf("Reader process is waiting for RECORD with id %d in block %d\n",recid + i, block_index);
-            sem_wait(block_sems[block_index]);
+            printf("\033[0m");
+            start_read(reader_sems[block_index],writer_sems[block_index],data,block_index);
+            printf("\033[1;33m");
             printf("DONE WAITING\n");
+            printf("\033[0m");
             clock_gettime(CLOCK_MONOTONIC, &delay_end); // END THE TIMER WHEN THE PROCESS ENTERS ITS CS
 
             // SEEK TO THE RECORD
@@ -74,14 +80,20 @@ int main(int argc, char *argv[]) {
 
             printf("Reader with PID: %d has read the record: ID: %d, Surname: %s, Name: %s, Balance: %d\n", getpid(), record.customerID, record.lName, record.fName, record.balance);
             total_bal+=record.balance;
-            if(i!=consecutive_recs-1)
-                sem_post(block_sems[block_index]);
+
+            if(i!=consecutive_recs-1){
+                //sem_wait(mutex);
+                end_read(reader_sems[block_index],writer_sems[block_index], data,block_index);
+                //sem_post(mutex);
+            }
         }
         double avg_bal = total_bal/consecutive_recs+1;
         printf("Average balance of the records read by reader with PID %d: %f\n", getpid(), avg_bal);
     } else { // IF THERE ARE NO CONSECUTIVE RECORDS
         block_index = (recid-1) / (double)(max_records/NUM_BLOCKS); 
-        sem_wait(block_sems[block_index]);
+        //sem_wait(mutex);
+        start_read(reader_sems[block_index], writer_sems[block_index], data,block_index);
+        //sem_post(mutex);
         clock_gettime(CLOCK_MONOTONIC, &delay_end); 
         fseek(file, (recid-1) * sizeof(Record), SEEK_SET);
         procrecords++;
@@ -96,8 +108,12 @@ int main(int argc, char *argv[]) {
     int sec = rand() % (dr + 1);
     sleep(sec);
 
-    sem_post(block_sems[block_index]);
+    //sem_wait(mutex);
+    end_read(reader_sems[block_index], writer_sems[block_index], data,block_index);
+    //sem_post(mutex);
+    printf("\033[1;32m");
     printf("Reader posted for RECORD(s) %s\n",argv[2]);
+    printf("\033[0m"); 
 
     // CLOSE THE FILE
 
@@ -127,7 +143,8 @@ int main(int argc, char *argv[]) {
 
     // CLOSE THE SEMAPHORES
     for (int i = 0; i < NUM_BLOCKS; i++) {
-        sem_close(block_sems[i]);
+        sem_close(reader_sems[i]);
+        sem_close(writer_sems[i]);
     }
     sem_close(mutex);
 

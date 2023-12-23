@@ -16,13 +16,16 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &delay_start);
 
     // OPEN THE SEMAPHORES WITHIN THIS PROGRAM
-    sem_t *block_sems[NUM_BLOCKS];
+    sem_t *reader_sems[NUM_BLOCKS];
+    sem_t *writer_sems[NUM_BLOCKS];
     sem_t *mutex;
     char sem_name[20];
 
     for (int i = 0; i < NUM_BLOCKS; i++) {
-        sprintf(sem_name, "/block_sem_%d", i);
-        block_sems[i] = sem_open(sem_name, 0);
+        sprintf(sem_name, "/reader_sem_%d", i);
+        reader_sems[i] = sem_open(sem_name, 0);
+        sprintf(sem_name, "/writer_sem_%d", i);
+        writer_sems[i] = sem_open(sem_name, 0);
     }
     mutex = sem_open("/mutex", 0);
 
@@ -46,7 +49,7 @@ int main(int argc, char *argv[]) {
 
     struct timespec delay_end; // DELAY END TIME
 
-    sem_wait(block_sems[block_index]);
+    sem_wait(writer_sems[block_index]);
     clock_gettime(CLOCK_MONOTONIC, &delay_end);
     // SEEK TO THE APPROPRIATE RECORD
     fseek(file, (recid-1) * sizeof(Record), SEEK_SET);
@@ -73,9 +76,11 @@ int main(int argc, char *argv[]) {
     int sec = rand() % (dw + 1);
     sleep(sec);
 
-    sem_post(block_sems[block_index]);
-    printf("writer posted for record id %d\n", recid);
-
+    sem_post(writer_sems[block_index]);
+    printf("\033[1;32m");
+    printf("Writer posted for RECORD %d\n", recid);
+    printf("\033[0m");
+    
     // CLOSE THE FILE
     fclose(file);
 
@@ -102,7 +107,8 @@ int main(int argc, char *argv[]) {
 
     // CLOSE THE SEMAPHORES
     for (int i = 0; i < NUM_BLOCKS; i++) {
-        sem_close(block_sems[i]);
+        sem_close(reader_sems[i]);
+        sem_close(writer_sems[i]);
     }
     sem_close(mutex);
 

@@ -70,11 +70,14 @@ int main(int argc, char *argv[]) {
     sprintf(shmid_str, "%d", shmid);
 
     // INITIALIZE SEMAPHORES
-    sem_t *block_sems[NUM_BLOCKS]; // WE NEED AN ARRAY OF SEMAPHORES FOR EACH PARTITION OF THE FILE
+    sem_t *reader_sems[NUM_BLOCKS]; // WE NEED AN ARRAY OF SEMAPHORES FOR EACH PARTITION OF THE FILE [READERS]
+    sem_t *writer_sems[NUM_BLOCKS]; // WE NEED AN ARRAY OF SEMAPHORES FOR EACH PARTITION OF THE FILE [WRITERS]
     char sem_name[20];
     for (int i = 0; i < NUM_BLOCKS; i++) {
-        sprintf(sem_name, "/block_sem_%d", i); // APPEND THE LOOP COUNTER TO A STATIONARY NAME, TO CREATE INDIVIDUAL SEMAPHORE NAMES
-        block_sems[i] = create_semaphore(sem_name);
+        sprintf(sem_name, "/reader_sem_%d", i); // APPEND THE LOOP COUNTER TO A STATIONARY NAME, TO CREATE INDIVIDUAL SEMAPHORE NAMES
+        reader_sems[i] = create_semaphore(sem_name);
+        sprintf(sem_name, "/writer_sem_%d", i); // APPEND THE LOOP COUNTER TO A STATIONARY NAME, TO CREATE INDIVIDUAL SEMAPHORE NAMES
+        writer_sems[i] = create_semaphore(sem_name);
     }
     sem_t *stats_sem = create_semaphore("/mutex"); // CREATE A SEMAPHORE FOR SHARED MEMORY ACCESS
 
@@ -82,11 +85,13 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < NUM_BLOCKS; i++) {
         sharedData->reader_times[i] = -1.0;
         sharedData->writer_times[i] = -1.0;
+        sharedData->block_readers[i] = 0;
     }
     sharedData->maxdelay = 0.0;
     sharedData->completed_readers = 0;
     sharedData->completed_writers = 0;
     sharedData->processed_records = 0;
+
 
     // PROGRAM MAIN LOOP AND SPAWNING SEGMENT
     int quit=0;
@@ -162,8 +167,10 @@ int main(int argc, char *argv[]) {
 
     // CLEAN UP
     for (int i = 0; i < NUM_BLOCKS; i++) {
-        sprintf(sem_name, "/block_sem_%d", i);
-        destroy_semaphore(block_sems[i], sem_name);
+        sprintf(sem_name, "/reader_sem_%d", i);
+        destroy_semaphore(reader_sems[i], sem_name);
+        sprintf(sem_name, "/writer_sem_%d", i);
+        destroy_semaphore(writer_sems[i], sem_name);
     }
 
     destroy_semaphore(stats_sem, "/mutex");
